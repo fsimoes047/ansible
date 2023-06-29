@@ -1,0 +1,201 @@
+---
+#- name: Socks tunnel setup
+#  hosts: all
+#  gather_facts: no
+#  roles:
+#  - role: ansible-role-event-socks-tunnel
+#    run_once: true
+#    delegate_to: localhost
+#    vars:
+#      acc_id: "{{ account_triname }}"
+#      transaction_id: "{{ tower_job_id }}"
+      
+- name: win, move files from \service\kalive\inactive\ to \service\kalive\active\
+  hosts: all
+  gather_facts: true
+  vars:
+    fil_item: []
+    inativos: []
+
+
+  tasks:
+
+  - name: Verifica se existe c:\temp\file00009778.txt
+    win_stat:
+      path: C:\temp\file00009778.txt
+    register: fileinfo
+
+  - name: se não existe fileinfo envia mensagem de erro
+    debug:
+      msg: "A rotina active_to_inactive não correu neste servidor"
+    when: not fileinfo.stat.exists
+
+  - name: stop se fileinfo não existe
+    meta: end_play
+    when: not fileinfo.stat.exists
+
+  - name: copia file para localhost 
+    fetch: 
+      src: c:/temp/file00009778.txt
+      dest: ~/
+
+  - name: importa info de file00009778.txt 
+    set_fact:
+       my_list: "{{ lookup('file', '~/{{inventory_hostname}}/c:/temp/file00009778.txt')}}"
+
+  - set_fact:
+      path_active: "{{ my_list['d_active'] }}"
+      path_inactive: "{{ my_list['d_inactive'] }}"
+      change_number: "{{ my_list['change_num'] }}"
+      status: "{{ my_list['status'] }}"
+      pre_inativos: "{{ my_list['pre_inativos'] }}"
+      data_hora:  "{{ my_list['data_hora'] }}"
+
+  - set_fact:
+      intervalo: "{{ ansible_date_time.epoch.split(',')[0] | int - data_hora.split(',')[0] | int }}"
+                       
+  - name: se não passaram 10 minutos envia mensagem de erro
+    debug:
+      msg: "O movimento active to inactive ocorreu há {{ intervalo }} segundos, menos que 10 minutos. Tente mais tarde."
+    when: intervalo | int < 600
+
+  - name: stop se tempo inferior a 10 minutos
+    meta: end_play
+    when: intervalo | int < 600
+      
+  - name: delete de file do server windows
+    win_file:
+      path: c:\temp\file00009778.txt
+      state: absent
+      
+  - name: delete file do localhost
+    file:
+      path: ~/{{inventory_hostname}}
+      state: absent
+    delegate_to: localhost       
+
+  - name: regista dir da pasta "services\kalive\active" antes do movimento
+    win_command: "cmd.exe /c dir {{ path_active }}"
+    register: dir_active1
+    
+  - name: regista dir da pasta "services\kalive\inactive" antes do movimento
+    win_command: "cmd.exe /c dir {{ path_inactive }}"
+    register: dir_inactive1
+
+##################################################
+
+  - name: lista files na pasta de inativos
+    win_find:
+      paths: "{{ path_inactive }}"
+      file_type: file
+    register: find_files
+
+  - name: regista lista de files na pasta inativa
+    set_fact:
+      inativos: "{{ inativos | default([]) + item.split(' ') | reject('equalto','') }}"                     
+    with_items: "{% for x in range(find_files.matched) %}
+                    {% if find_files.files[x].filename not in pre_inativos %}
+                    {{ find_files.files[x].filename }}
+                    {% endif %}
+                    {% endfor %}"
+
+  - name: Move files excepto os pre-inativos
+    win_copy:
+      src: "{{ path_inactive }}{{item}}"
+      dest: "{{ path_active }}"
+      remote_src: yes
+    with_items: "{{ inativos }}"                 
+    register: my_result
+
+  - name: Delete files movidos na pasta de inativos
+    win_file:
+      path: "{{ path_inactive }}{{item}}"
+      state: absent
+    with_items: "{{ inativos }}"
+
+##################################################
+
+  - name: regista dir da pasta "\services\kalive\active" depois do movimento
+    win_command: "cmd.exe /c dir {{ path_active }}"
+    register: dir_active2
+    
+  - name: regista dir da pasta "services\kalive\inactive" depois do movimento
+    win_command: "cmd.exe /c dir {{ path_inactive }}"
+    register: dir_inactive2
+
+  - name: variaveis nome e conteudo do file KeepAlive
+    set_fact: 
+      keep_content: "Evidencias de continuidade operacional: KeepAlives\r\n
+         \n
+                Host FQDN: {{ ansible_fqdn }}\r\n
+                Host IP: {{ ansible_facts.ip_addresses[0] }}\r\n
+                Number of change: {{ change_number }}\n
+                Start: {{ dir_active1.start }}\n
+                End: {{ dir_inactive2.end }}\n
+                \r\n
+                {% if status == 'ativo' %}
+                FOLDERS BEFORE MOVEMENT:\r
+                {{ dir_inactive1.stdout_lines[0] }}\n
+                {{ dir_inactive1.stdout_lines[1] }}\n
+                \n
+                {{ dir_inactive1.stdout_lines[3] }}\n
+                \r\n
+                Keepalives INACTIVE \r\n
+                There are Keepalives in folder {{ path_inactive }}
+                \r\n
+                \r\n
+                Files:\r\n 
+                  {% for res in inativos %}
+                  {{ res }}\r
+                  {% endfor %}
+                \r\n              
+                \r\n
+                FOLDERS AFTER MOVEMENT:\n
+                {{ dir_active2.stdout_lines[0] }}\n
+                {{ dir_active2.stdout_lines[1] }}\n
+                \n
+                {{ dir_active2.stdout_lines[3] }}\n
+                \r\n
+                Keepalives ACTIVE \n
+                Keepalives have been moved to folder {{ path_active }}
+                \r\n
+                \r\n
+                Files moved:\r\n
+                {% for res in inativos %}
+                {{ res }}\r\n
+                {% endfor %}                
+                {% else %} 
+                FOLDERS BEFORE MOVEMENT:\n
+                {{ dir_inactive1.stdout_lines[0] }}\n
+                {{ dir_inactive1.stdout_lines[1] }}\n
+                \r\n
+                {{ dir_inactive1.stdout_lines[3] }}\n
+                \r\n
+                Keepalives INACTIVE \n
+                There are Keepalives in folder {{ path_inactive }}
+                \r\n 
+                \r\n
+                Files:\n
+                {% for res in dir_inactive1.stdout_lines %}
+                {% if 'DIR' not in res and 'File' not in res and 'Dir' not in res and 'Volume' not in res %}
+                {{ res[36:] | win_basename | trim }}\r
+                {% endif %}
+                {% endfor %}                
+                \r\n              
+                \r\n
+                FOLDERS AFTER MOVEMENT:\r 
+                \r 
+                Keepalives INACTIVE \n
+                KeepAlives have not been moved, remain in folder {{ path_inactive }}
+                {% endif %}
+                "
+      keep_name: "KeepAlive_{{ change_number }}_{{ ansible_hostname }}_{{ ansible_facts.date_time.iso8601_basic_short }}.txt"
+
+  - name: passagem de variáveis para o workflow
+    set_stats:
+      data:
+        file_name: "{{ keep_name }}"
+        file_content: "{{ keep_content }}"
+      aggregate: no
+      per_host: no
+...

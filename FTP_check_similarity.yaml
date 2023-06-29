@@ -1,0 +1,25 @@
+- name: Check FTP Service
+  hosts: all
+  gather_facts: yes
+
+  tasks: 
+
+  - name: Check Microsoft FTP Service
+    win_service:
+      name: Microsoft FTP Service
+    register: microsoft_ftp_service
+    ignore_errors: yes
+
+  - name: Check FTP Publishing Service
+    win_service:
+      name: FTP Publishing Service
+    register: ftp_publishing_service
+    ignore_errors: yes
+
+  - name: Check FTP Services
+    set_fact:
+      ftp_services_running: "{{ microsoft_ftp_service.state == 'running' or ftp_publishing_service.state == 'running' }}"
+
+  - name: Print FTP Services Status
+    debug:
+      msg: "{{ ansible_hostname }} - {{ 'found' if ftp_services_running else 'not found' }}"

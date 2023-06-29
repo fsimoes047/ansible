@@ -1,0 +1,70 @@
+---
+- name: kalive ativo-inativo e inativo-ativo
+  hosts: all
+  gather_facts: yes
+  vars_prompt:
+  - name: "change_number"
+    prompt: "Número do change "
+    private: no
+  tasks:
+
+   - name: files
+     shell: ls /var/www/html/kalive/
+     register: files_in
+
+   - name: set fact
+     set_fact: 
+       test: "{% if 'bak' in files_in.stdout_lines[0] %}
+              exit
+              {% else %}
+              continue
+              {% endif %}"
+
+   - name: envia mensagem de erro
+     debug:
+       msg: 'Erro: esta rotina já correu para este servidor'
+     when: test == ' exit '
+  
+   - name: stop se files.bak existem
+     meta: end_play
+     when: test == ' exit '
+
+   - name: Rename file to .bak
+     shell: mv /var/www/html/kalive/{{ item }} /var/www/html/kalive/{{ item}}.bak
+     with_items:
+      "{{ files_in.stdout_lines }}"
+
+   - name: files
+     shell: ls /var/www/html/kalive/
+     register: files_out
+
+
+#------------------------------------------------------------------
+#------------------------------------------------------------------
+
+   - name: variaveis nome e conteudo do file KeepAlive
+     set_fact: 
+      keep_content: "Evidencias de continuidade operacional: KeepAlives\r\n
+                    Change: {{ change_number }}\n
+                    {{ ansible_hostname }}\n
+                    início da intervenção: {{ files_in.start }}\n
+                    resultado: \n
+                    {% for res in files_in.stdout_lines %}
+                    {{ res }}\n
+                    {% endfor %}
+                    fim da intervenção: {{ files_out.end }}\n
+                    resultado:\n
+                    {% for res in files_out.stdout_lines %}
+                    {{ res }}\n
+                    {% endfor %}
+                    "
+      keep_name: "KeepAlive_{{ change_number }}_{{ ansible_hostname }}_{{ ansible_facts.date_time.iso8601_basic_short }}.txt"
+
+   - name: passagem de variáveis para o workflow
+     set_stats:
+       data:
+         file_name: "{{ keep_name }}"
+         file_content: "{{ keep_content }}"
+       aggregate: no
+       per_host: yes
+...

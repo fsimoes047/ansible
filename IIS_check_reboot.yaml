@@ -1,0 +1,65 @@
+---
+- name: Socks tunnel setup
+  hosts: all
+  gather_facts: no
+  roles:
+  - role: ansible-role-event-socks-tunnel
+    run_once: true
+    delegate_to: localhost
+    vars:
+      acc_id: "{{ account_triname }}"
+      transaction_id: "{{ tower_job_id }}"
+
+- name: Check & Reboot
+  hosts: all
+  gather_facts: yes
+
+  tasks: 
+
+  - name: Powershell run 
+    win_shell: |
+          Get-WinEvent -FilterHashtable @{logname = 'Setup'; id=14 } |  Format-Table TimeCreated,message -Wrap -Autosize | out-string -Width 250
+    register: eventinfo
+    failed_when: "eventinfo.rc not in [ 0, 1 ]"
+
+#  - name: show events
+#    debug:
+#      msg: "Server: {{ ansible_hostname }} - {{ eventinfo.stdout_lines }}"
+
+  - name: set bool var
+    set_fact:
+      b_var: "{% for res in eventinfo.stdout_lines %}
+              {% if '28/09/2022' in res %}
+                {% if 'A reboot is necessary before the selectable update IIS-FTPSvc' in res %}
+                1
+                {% else %}
+                2
+                {% endif %}
+              {% else %}
+              0
+              {% endif %}
+              {% endfor %}"
+
+#  - name: b_var output
+#    debug:
+#      var: b_var
+    
+  - name: filter events & give result 'found' or 'not found'
+    set_fact:
+      out_var: "{% if '1' in b_var %}
+            found 
+            {% else %}
+            not found
+            {% endif %}"
+
+#  - name: output list
+#    debug:
+#      msg: "{{ out_var }}"
+
+  - name: passagem de variáveis para output
+    set_stats:
+      data:
+        file_content: "{{ ansible_hostname }} - {{ out_var }}\n"
+      aggregate: yes
+      per_host: no
+...

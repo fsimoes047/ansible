@@ -1,0 +1,36 @@
+- name: Check/Disable SQL_TELEMETRY Service
+  hosts: all
+  gather_facts: no
+  vars:
+    service_name: []
+    service_fim: []
+  tasks: 
+
+  - name: Powershell Get Service "SQLTELEMETRY$*"
+    win_shell: |
+          Get-Service -Name "Re*" | Select Name, Status, StartType
+    register: service_out
+
+  - debug:
+      var: service_out.stdout_lines
+
+        
+  - name: get list of service atributes
+    set_fact:
+      service_n: "{{item}}"
+    with_items: "{% for line in service_out.stdout_lines %}
+           {% if '-' not in line and 'Name' not in line  %}
+           {{ line }}
+           {% endif %}
+           {% endfor %}"
+    when: service_out.stdout_lines != []
+    
+  - debug:
+      var: service_n
+  
+  - name: convert to list
+    set_fact:
+      service_name: "{{service_n.split(' ')  | reject('equalto','') | list }}"
+ 
+  - debug:
+      var: service_name  

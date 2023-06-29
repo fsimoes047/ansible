@@ -1,0 +1,32 @@
+---
+- name: linux, move files  da pasta active para pasta inactive
+  hosts: all
+  gather_facts: no
+  become: yes
+  tasks:
+
+  - name: cria pasta em l-rep-p-1
+    file:
+      path: /automation/cache/kalives
+      state: directory
+      recurse: yes
+
+  - name: cria file keepalive em l-rep-p-1
+    copy: 
+      content: "{{ file_content }}"
+      dest: /automation/cache/kalives/{{ file_name }}
+
+  - set_fact:
+      central_server: l-rep-p-1.bes.ibmpt.bluecare.ibm.com
+      dir_rep: /automation/cache/kalives/
+      folder_id: 155291259628
+    
+  - name: envia file para a box
+    shell: bash -ilc '/root/bin/box/send2box.sh {{ dir_rep }}/{{ file_name }} {{folder_id }}'
+    run_once: true
+
+  - name: delete da pasta kalives em l-rep-p-1
+    file:
+      path: /automation/cache/kalives
+      state: absent
+...

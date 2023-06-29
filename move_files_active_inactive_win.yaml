@@ -1,0 +1,234 @@
+---
+#- name: Socks tunnel setup
+#  hosts: all
+#  gather_facts: no
+#  roles:
+#  - role: ansible-role-event-socks-tunnel
+#    run_once: true
+#    delegate_to: localhost
+#    vars:
+#      acc_id: "{{ account_triname }}"
+#      transaction_id: "{{ tower_job_id }}"
+
+- name: move files from \service\kalive\active\ to \service\kalive\inactive\
+  hosts: all
+  gather_facts: yes
+  vars_prompt:
+  - name: "change_number"
+    prompt: "Número do change "
+    private: no
+  vars:
+    my_list: []
+    pre_inativos: []
+
+  tasks: 
+
+  - name: Verifica se existe c:\temp\file00009778.txt
+    win_stat:
+      path: C:\temp\file00009778.txt
+    register: fileinfo
+
+  - name: Se existe file00009778.txt envia mensagem de erro
+    debug:
+      msg: "Esta rotina já correu neste servidor, deve agora correr a rotina inactive_to_active"
+    when: fileinfo.stat.exists
+  
+  - name: stop se fileinfo existe
+    meta: end_play
+    when: fileinfo.stat.exists
+
+########################################################
+
+  - name: Procura pasta ativa Keepalive
+    win_stat:
+      path: "{{ item }}"
+    register: pathact
+    with_items:
+    - D:/KAlive/active/
+    - D:/Services/kalivea/active/
+    - D:/Services/OR3/Kalive/active/
+    - D:/Services/PCO/SAP BusinessObjects/tomcat/webapps/Kalive/active/
+    - D:/Services/GESIM/GTFTRF/kalive/active/
+    - C:/services/kalive/active/
+    - C:/services/keepalive/active/
+    - D:/services/kalive/active/
+    - D:/services/keepalive/active/
+
+  
+  - name: Regista pasta ativa
+    set_fact:
+      path_active: "{% for resul in pathact.results %}
+                    {% if resul.stat.exists  == true %}
+                    {{ resul.stat.path }}
+                    {% endif %}
+                    {% endfor %}"
+
+  - name: Procura pasta inativa Keepalive
+    win_stat:
+      path: "{{ item }}"
+    register: pathinact
+    with_items:
+    - D:/KAlive/inactive/
+    - D:/Services/kalivea/inactive/
+    - D:/Services/OR3/Kalive/inactive/
+    - D:/Services/PCO/SAP BusinessObjects/tomcat/webapps/Kalive/inactive/
+    - D:/Services/GESIM/GTFTRF/kalive/inactive/
+    - C:/services/kalive/inactive/
+    - C:/services/keepalive/inactive/
+    - D:/services/kalive/inactive/
+    - D:/services/keepalive/inactive/
+
+  - name: Regista pasta inativa
+    set_fact:
+      path_inactive: "{% for resul in pathinact.results %}
+                    {% if resul.stat.exists  == true %}
+                    {{ resul.stat.path }}
+                    {% endif %}
+                    {% endfor %}"
+
+######################################################
+   
+  - name: regista dir da pasta active antes do movimento
+    win_command: "cmd.exe /c dir {{path_active}}"
+    register: dir_active1
+
+  - name: regista dir da pasta inactive antes do movimento
+    win_command: "cmd.exe /c dir {{ path_inactive }}"
+    register: dir_inactive1
+
+######################################################
+
+  - name: Recolhe files para a lista de pre-inativos
+    block:
+    - name: percorre dir_inactive1.stdout_lines
+      set_fact:
+        pre_inativos: "{{ pre_inativos | default([]) + item.split('  ') | reject('equalto','') }}"                     
+      with_items: "{% for inact in dir_inactive1.stdout_lines %}
+                      {% if 'Volume' not in inact and 'Dir' not in inact and '<DIR>' not in inact and 'File' not in inact  and  'free' not in inact %}
+                      {{ inact[36:] }}
+                      {% endif %}
+                     {% endfor %}"
+    rescue:
+    - name: fixa a lista vazia
+      set_fact:
+        pre_inativos: [""]
+
+######################################################
+
+  - name: move files
+    win_command: "cmd.exe /c move {{ path_active | trim }}*.* {{ path_inactive }}"
+    register: my_result    
+    ignore_errors: yes
+    
+  - name: regista status do servidor
+    set_fact:
+      status: "{% if my_result.stderr_lines != [] %}inativo{% else %}ativo{% endif %}"	
+    
+  - name: regista dados do servidor
+    set_fact:
+      info: '{"ip_address": "{{inventory_hostname}}", "status": "{{status}}", "d_active": "{{ path_active | trim }}", "d_inactive": "{{ path_inactive | trim }}", "change_num": "{{ change_number}}", "pre_inativos": "{{ pre_inativos }}", "data_hora":"{{ ansible_date_time.epoch }}"}'
+    
+  - name: cria pasta \temp
+    win_file:
+       path: C:\temp
+       state: directory 
+  
+  - name: cria file externa com informação sobre status do server e outras
+    win_copy:
+      content: "{{ info }}"
+      dest: c:\temp\file00009778.txt
+      recurse: yes
+
+  - name: regista dir da pasta "\services\kalive\active" depois do movimento
+    win_command: "cmd.exe /c dir {{ path_active }}"
+    register: dir_active2
+    
+  - name: regista dir da pasta "services\kalive\inactive" depois do movimento
+    win_command: "cmd.exe /c dir {{ path_inactive }}"
+    register: dir_inactive2
+
+  - name: variaveis nome e conteudo do file KeepAlive
+    set_fact: 
+      keep_content: "Evidencias de continuidade operacional: KeepAlives\r\n
+         \n
+                Host FQDN: {{ ansible_fqdn }}\r\n
+                Host IP: {{ ansible_facts.ip_addresses[0] }}\r\n
+                Number of change: {{ change_number }}\n
+                Start: {{ dir_active1.start }}\n
+                End: {{ dir_inactive2.end }}\n
+                \r\n
+                {% if status == 'ativo' %}
+                FOLDERS BEFORE MOVEMENT:\r
+                {{ dir_active1.stdout_lines[0] }}\n
+                {{ dir_active1.stdout_lines[1] }}\n
+                \n
+                {{ dir_active1.stdout_lines[3] }}\n
+                \r\n
+                Keepalives ACTIVE \r\n
+                There are Keepalives in folder {{ path_active }}
+                \r\n
+                \r\n
+                Files:\r\n
+                {% if my_result.stdout_lines !=[] %} 
+                  {% for res in my_result.stdout_lines %}
+                  {% if 'file' not in res %}
+                  {{ res | win_basename | trim }}\r
+                  {% endif %}
+                  {% endfor %}
+                {% endif %}
+                \r\n              
+                \r\n
+                FOLDERS AFTER MOVEMENT:\n
+                {{ dir_inactive2.stdout_lines[0] }}\n
+                {{ dir_inactive2.stdout_lines[1] }}\n
+                \n
+                {{ dir_inactive2.stdout_lines[3] }}\n
+                \r\n
+                Keepalives INACTIVE \n
+                Keepalives have been moved to folder {{ path_inactive }}
+                \r\n
+                \r\n
+                Files moved:\r\n
+                {% for res in my_result.stdout_lines %}
+                {% if 'file' not in res %}
+                {{ res | win_basename | trim }}\r\n
+                {% endif %}
+                {% if 'file' in res %}
+                {{ res | trim }}
+                {% endif %}
+                {% endfor %}                
+                {% else %} 
+                FOLDERS BEFORE MOVEMENT:\n
+                {{ dir_inactive1.stdout_lines[0] }}\n
+                {{ dir_inactive1.stdout_lines[1] }}\n
+                \r\n
+                {{ dir_inactive1.stdout_lines[3] }}\n
+                \r\n
+                Keepalives INACTIVE \n
+                There are Keepalives in folder {{ path_inactive }}
+                \r\n 
+                \r\n
+                Files:\n
+                {% for res in dir_inactive1.stdout_lines %}
+                {% if 'DIR' not in res and 'File' not in res and 'Dir' not in res and 'Volume' not in res %}
+                {{ res[36:] | win_basename | trim }}\r
+                {% endif %}
+                {% endfor %}                
+                \r\n              
+                \r\n
+                FOLDERS AFTER MOVEMENT:\r 
+                \r 
+                Keepalives INACTIVE \n
+                KeepAlives have not been moved, remain in folder {{ path_inactive }}
+                {% endif %}
+                "
+      keep_name: "KeepAlive_{{ change_number }}_{{ ansible_hostname }}_{{ ansible_facts.date_time.iso8601_basic_short }}.txt"
+
+  - name: passagem de variáveis para o workflow
+    set_stats:
+      data:
+        file_name: "{{ keep_name }}"
+        file_content: "{{ keep_content }}"
+      aggregate: no
+      per_host: no
+...

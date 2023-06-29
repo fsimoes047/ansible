@@ -1,0 +1,68 @@
+---
+- name: Socks tunnel setup
+  hosts: all
+  gather_facts: no
+  roles:
+  - role: ansible-role-event-socks-tunnel
+    run_once: true
+    delegate_to: localhost
+    vars:
+      acc_id: "{{ account_triname }}"
+      transaction_id: "{{ tower_job_id }}"
+
+
+#  tasks:
+#- name: Check Event Viewer
+#  hosts: all
+#  gather_facts: yes
+
+  tasks: 
+
+   - name: Delete Local GPO EventVwr
+     win_shell: Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\EventLog" -Recurse
+     register: shel_res
+     ignore_errors: yes
+     
+     
+#   - name: debug
+#     debug:
+#         var: shel_res
+
+   - name: Local GPO Update
+     win_shell: gpupdate /force
+     when: shel_res.stderr == "" 
+
+   - name: Security autobackuplogfiles
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security" -Name autobackuplogfiles -Value 0
+
+   - name: Security Retention
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security" -Name Retention -Value 0
+
+   - name: Security MaxSize
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Security" -Name MaxSize -Value 159776768
+
+   - name: Application autobackuplogfiles
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application" -Name autobackuplogfiles -Value 0
+
+   - name: Application Retention
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application" -Name Retention -Value 0
+
+   - name: Application MaxSize
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application" -Name MaxSize -Value 159776768
+
+   - name: System autobackuplogfiles
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\System" -Name autobackuplogfiles -Value 0
+
+   - name: System Retention
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\System" -Name Retention -Value 0
+
+   - name: System MaxSize
+     win_shell: Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\System" -Name MaxSize -Value 159776768
+
+   - name: restart service
+     win_service:
+        name: EventLog
+        state: restarted
+        force_dependent_services: yes
+     tags:
+      - restart

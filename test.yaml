@@ -1,0 +1,15 @@
+---
+- hosts: all
+  gather_facts: yes
+  tasks:
+  
+  - debug:
+      var: ansible_os_family
+      
+  - name: linux ping
+    ping:
+    when: ansible_os_family == "Debian"
+    
+  - name: win ping
+    win_ping:   
+    when: ansible_os_family != "Debian"

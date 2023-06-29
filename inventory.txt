@@ -1,0 +1,25 @@
+[win]
+192.168.1.52
+192.168.1.53
+
+[linux]
+#192.168.1.55
+#192.168.1.56
+#192.168.1.57
+
+[win:vars]
+ansible_user= administrator
+ansible_password=Novo_6565
+ansible_connection=winrm
+ansible_port=5985
+ansible_winrm_transport=ntlm
+ansible_winrm_server_cert_validation= ignore
+
+[linux:vars]
+ansible_user = fernando
+ansible_ssh_pass = Novo6565
+ansible_sudo_user = fernando
+ansible_become_user = root
+ansible_become_pass = Novo6565
+
+

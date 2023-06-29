@@ -1,0 +1,166 @@
+---
+- name: Check register status and values
+  hosts: all
+  gather_facts: no
+  roles:
+  - role: ansible-role-event-socks-tunnel
+    run_once: true
+    delegate_to: localhost
+    vars:
+      acc_id: "{{ account_triname }}"
+      transaction_id: "{{ tower_job_id }}"
+
+
+  tasks:
+
+#- name: Check Registry status
+#  hosts: all
+#  gather_facts: no
+
+#  tasks: 
+
+
+
+   - name: Check Security autobackuplogfiles
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Security"
+         name: autobackuplogfiles
+     register: reg1
+
+   - name: Check Security Retention
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Security" 
+         name: Retention
+     register: reg2
+
+   - name: Check Securiy MaxSize
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Security" 
+         name: MaxSize
+     register: reg3
+
+   - name: Check Application autobackuplogfiles
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application" 
+         name: autobackuplogfiles
+     register: reg4     
+
+   - name: Check Application retention
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application" 
+         name: Retention
+     register: reg5 
+
+   - name: Check Application MaxSize
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application" 
+         name: MaxSize
+     register: reg6
+
+   - name: Check System autobackuplogfiles
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\System" 
+         name: autobackuplogfiles
+     register: reg7
+
+   - name: Check System Retention
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\System" 
+         name: Retention
+     register: reg8
+
+   - name: Check System MaxSize
+     win_reg_stat:
+         path: "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\System" 
+         name: MaxSize
+     register: reg9
+
+
+   - name: passagem de variáveis para output
+     set_stats:
+       data:
+
+          Security_autobacklogfiles: "{{inventory_hostname}}-{% if reg1['exists'] %}
+                    {% if reg1['value'] == 0 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg1['value']}})
+                    {% endif %}      
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"
+          Security_Retention: "{{inventory_hostname}}-{% if reg2['exists'] %}
+                    {% if reg2['value'] == 0 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg2['value']}})
+                    {% endif %}         
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"         
+          Security_MaxSize: "{{inventory_hostname}}-{% if reg3['exists'] %}
+                    {% if reg3['value'] == 159776768 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg3['value']}})
+                    {% endif %}        
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"
+          Application_autobacklogfiles: "{{inventory_hostname}}-{% if reg4['exists'] %}
+                    {% if reg4['value'] == 0 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg4['value']}})
+                    {% endif %}        
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"
+          Application_Retention: "{{inventory_hostname}}-{% if reg5['exists'] %}
+                    {% if reg5['value'] == 0 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg5['value']}})
+                    {% endif %}       
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"       
+          Application_MaxSize: "{{inventory_hostname}}-{% if reg6['exists'] %}
+                    {% if reg6['value'] == 159776768 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg6['value']}})
+                    {% endif %}       
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"
+          System_autobacklogfiles: "{{inventory_hostname}}-{% if reg7['exists'] %}
+                    {% if reg7['value'] == 0 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg7['value']}})
+                    {% endif %}        
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"
+          System_Retention: "{{inventory_hostname}}-{% if reg8['exists'] %}
+                    {% if reg8['value'] == 0 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg8['value']}})
+                    {% endif %}        
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"        
+          System_MaxSize: "{{inventory_hostname}}-{% if reg9['exists'] %}
+                    {% if reg9['value'] == 159776768 %}
+                    OK
+                    {% else %}
+                    DIFFERENCE - ({{reg9['value']}})
+                    {% endif %}       
+                    {% else %}
+                    Registo não existe
+                    {% endif %}"
+       aggregate: yes
+       per_host: no
+...

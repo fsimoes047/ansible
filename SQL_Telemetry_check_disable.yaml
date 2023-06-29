@@ -1,0 +1,102 @@
+---
+#- name: Socks tunnel setup
+#  hosts: all
+#  gather_facts: no
+#  roles:
+#  - role: ansible-role-event-socks-tunnel
+#    run_once: true
+#    delegate_to: localhost
+#    vars:
+#      acc_id: "{{ account_triname }}"
+#      transaction_id: "{{ tower_job_id }}"
+
+- name: SQL TELEMETRY DISABLE
+  hosts: all
+  gather_facts: no
+  vars:
+      service_name: []
+      service_fim: []
+      
+  tasks: 
+
+  - name: Powershell Get Service "SQLTELEMETRY$*"
+    win_shell: |
+          Get-Service -Name "SQLTELEMETRY$*" | Select Name, Status, StartType
+    register: service_out
+
+  - debug:
+      var: service_out.stdout_lines
+
+        
+  - name: get list of service atributes
+    set_fact:
+      service_name: "{{item.split(' ') | reject('equalto','') | list }}"
+    with_items: "{% for line in service_out.stdout_lines %}
+           {% if '-' not in line and 'Name' not in line %}
+           {{ line }}
+           {% endif %}
+           {% endfor %}"
+    when: service_out.stdout_lines != []
+
+  - name: PowerShell Stop Service "SQLTELEMETRY$*" if running
+    win_shell: |
+            {% for idx in range(0,service_name|count,3) %}
+            {% if service_name[idx+1] != 'Stopped' %}
+            Stop-Service -Name '{{service_name[idx]}}' -Force 
+            {% endif %}
+            {% endfor %}
+    when: service_out.stdout_lines != [] 
+           
+  - name: PowerShell Disable Service "SQLTELEMETRY$*" if not disabled
+    win_shell: |
+            {% for idx in range(0,service_name|count,3) %}
+            {% if service_name[idx+2] != 'Disabled' %}
+            Set-Service -Name '{{service_name[idx]}}' -StartupType Disabled
+            {% endif %}
+            {% endfor %}
+    when: service_out.stdout_lines != []
+    
+  - name: Final state of services
+    win_shell: |
+          Get-Service -Name "SQLTELEMETRY$*" | Select Name, Status, StartType
+    register: service_final
+  - name: get items
+    set_fact:
+      service_f: "{{ item }}"
+    with_items: "{% for line in service_final.stdout_lines %}
+                    {% if '-' not in line and 'Name' not in line %}
+                    {{ line }}
+                    {% endif %}
+                    {% endfor %}"
+    when: service_final.stdout_lines != []    
+     
+  - name: get final list of service atributes
+    set_fact:
+      service_fim: "{{service_f.split(' ') | reject('equalto','') | list }}"
+    when: service_final.stdout_lines != []
+    
+  - name: Prepare message of non existence
+    set_fact:
+      service_f: "{{ service_f |default([])+ [item] }}"
+    with_items:
+      - 'NON EXISTENT'
+      - '-----'
+      - '-----'
+    when: service_final.stdout_lines == []
+            
+  - name: Get message of non existence
+    set_fact: 
+      service_fim: "{{ service_f }}"
+    when: service_final.stdout_lines == []  
+
+  - name: Output of final state of services
+    set_stats:
+      data:
+        Service_list_per_host: | 
+                      "{% for ind in range(0,(service_fim|count), 3) %}
+                       {{ansible_host}} - NAME: {{service_fim[ind]}}, STATUS: {{service_fim[ind+1]}}, STARTUPTYPE: {{service_fim[ind+2]}}
+                       {% endfor %}"
+            
+      aggregate: yes
+      per_host: no
+...
